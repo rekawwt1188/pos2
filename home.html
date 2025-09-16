@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Home Page - POS System</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="description" content="Point of Sale System for SONIC IRAQ">
+    <meta name="theme-color" content="#667eea">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="SONIC POS">
+    <meta name="msapplication-TileColor" content="#667eea">
+    <meta name="msapplication-TileImage" content="sonic logo.png">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Apple Touch Icons -->
+    <link rel="apple-touch-icon" href="sonic logo.png">
+    <link rel="apple-touch-icon" sizes="152x152" href="sonic logo.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="sonic logo.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="sonic logo.png">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="sonic logo.png">
+    <link rel="shortcut icon" href="sonic logo.png">
+    
+    <!-- Link to Font Awesome for icons -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" rel="stylesheet">
+    
+    <script>
+        // Check login status on page load
+        function checkLoginStatus() {
+            const isLoggedIn = sessionStorage.getItem('sonic_logged_in');
+            if (isLoggedIn !== 'true') {
+                // Redirect to login page if not logged in
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // Update user info if logged in
+            const username = sessionStorage.getItem('sonic_username');
+            if (username) {
+                document.title = `Home Page - Welcome ${username}`;
+                document.getElementById('user-info').textContent = `Welcome, ${username}`;
+            }
+        }
+        
+        // Logout function
+        function logout() {
+            if (confirm('Are you sure you want to logout?')) {
+                sessionStorage.removeItem('sonic_logged_in');
+                sessionStorage.removeItem('sonic_username');
+                sessionStorage.removeItem('sonic_login_time');
+                window.location.href = 'login.html';
+            }
+        }
+        
+        // Check login status when page loads
+        document.addEventListener('DOMContentLoaded', checkLoginStatus);
+        
+        // Backup Now function (saves to localStorage as backup)
+        function backupNow() {
+            try {
+                // Create backup data
+                const backupData = {
+                    timestamp: new Date().toISOString(),
+                    version: '1.0',
+                    data: {
+                        shopData: localStorage.getItem('shopData'),
+                        sonic_invoices: localStorage.getItem('sonic_invoices'),
+                        sonic_invoice_counter: localStorage.getItem('sonic_invoice_counter'),
+                        sonic_security_state: localStorage.getItem('sonic_security_state')
+                    }
+                };
+                
+                // Save backup to localStorage with timestamp key
+                const backupKey = `sonic_backup_${Date.now()}`;
+                localStorage.setItem(backupKey, JSON.stringify(backupData));
+                
+                // Also save as latest backup
+                localStorage.setItem('sonic_latest_backup', JSON.stringify(backupData));
+                
+                // Show success message
+                const backupTime = new Date().toLocaleString();
+                alert(`✅ Quick backup completed!\n\nBackup saved to local storage at: ${backupTime}\n\nThis backup contains:\n• Shop data (items, customers, transactions)\n• All invoices\n• Invoice counter\n• Security state\n\nData is safely stored in your browser's local storage.`);
+                
+                console.log('Quick backup completed successfully:', backupKey);
+                
+            } catch (error) {
+                console.error('Quick backup failed:', error);
+                alert('❌ Quick backup failed!\n\nError: ' + error.message + '\n\nPlease try again or use "Backup to File" instead.');
+            }
+        }
+        
+        // Backup to File function
+        function backupToFile() {
+            try {
+                // Collect all data from localStorage
+                const backupData = {
+                    timestamp: new Date().toISOString(),
+                    version: '1.0',
+                    data: {
+                        shopData: localStorage.getItem('shopData'),
+                        sonic_invoices: localStorage.getItem('sonic_invoices'),
+                        sonic_invoice_counter: localStorage.getItem('sonic_invoice_counter'),
+                        sonic_security_state: localStorage.getItem('sonic_security_state')
+                    }
+                };
+                
+                // Convert to JSON string
+                const jsonString = JSON.stringify(backupData, null, 2);
+                
+                // Create filename with timestamp
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+                const filename = `sonic_pos_backup_${timestamp}.json`;
+                
+                // Create and download file
+                const blob = new Blob([jsonString], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                // Show success message
+                alert(`✅ Backup successful!\n\nFile saved: ${filename}\n\nThis backup contains:\n• Shop data (items, customers, transactions)\n• All invoices\n• Invoice counter\n• Security state\n\nYou can restore this data later if needed.`);
+                
+                console.log('Backup completed successfully:', filename);
+                
+            } catch (error) {
+                console.error('Backup failed:', error);
+                alert('❌ Backup failed!\n\nError: ' + error.message + '\n\nPlease try again or contact support.');
+            }
+        }
+        
+        // Restore from Backup function
+        function restoreFromBackup() {
+            try {
+                // Create file input element
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.style.display = 'none';
+                
+                input.onchange = function(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        try {
+                            const backupData = JSON.parse(e.target.result);
+                            
+                            // Validate backup file structure
+                            if (!backupData.data || !backupData.timestamp) {
+                                throw new Error('Invalid backup file format');
+                            }
+                            
+                            // Confirm restore
+                            const confirmMessage = `⚠️ RESTORE BACKUP WARNING ⚠️\n\nThis will REPLACE all current data with backup data from:\n${new Date(backupData.timestamp).toLocaleString()}\n\nCurrent data will be LOST!\n\nAre you sure you want to continue?`;
+                            
+                            if (confirm(confirmMessage)) {
+                                // Restore data to localStorage
+                                if (backupData.data.shopData) {
+                                    localStorage.setItem('shopData', backupData.data.shopData);
+                                }
+                                if (backupData.data.sonic_invoices) {
+                                    localStorage.setItem('sonic_invoices', backupData.data.sonic_invoices);
+                                }
+                                if (backupData.data.sonic_invoice_counter) {
+                                    localStorage.setItem('sonic_invoice_counter', backupData.data.sonic_invoice_counter);
+                                }
+                                if (backupData.data.sonic_security_state) {
+                                    localStorage.setItem('sonic_security_state', backupData.data.sonic_security_state);
+                                }
+                                
+                                // Show success message
+                                alert(`✅ Restore successful!\n\nData restored from backup created on:\n${new Date(backupData.timestamp).toLocaleString()}\n\nPlease refresh the page to see your restored data.`);
+                                
+                                console.log('Data restored successfully from backup:', backupData.timestamp);
+                                
+                                // Optionally refresh the page
+                                if (confirm('Refresh the page now to see restored data?')) {
+                                    window.location.reload();
+                                }
+                            }
+                            
+                        } catch (error) {
+                            console.error('Restore failed:', error);
+                            alert('❌ Restore failed!\n\nError: ' + error.message + '\n\nPlease check that you selected a valid backup file.');
+                        }
+                    };
+                    
+                    reader.readAsText(file);
+                };
+                
+                // Trigger file selection
+                document.body.appendChild(input);
+                input.click();
+                document.body.removeChild(input);
+                
+            } catch (error) {
+                console.error('Restore setup failed:', error);
+                alert('❌ Restore setup failed!\n\nError: ' + error.message);
+            }
+        }
+    </script>
+    
+    <script>
+        // Register Service Worker for PWA functionality
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('/sw.js')
+                    .then(function(registration) {
+                        console.log('ServiceWorker registration successful');
+                    })
+                    .catch(function(err) {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f2f2f2;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+
+        .container {
+            width: 80%;
+            max-width: 1200px;
+            background-color: #fff;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            position: relative;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 36px;
+            color: #333;
+        }
+        
+        .header-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        
+        .logout-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+        
+        .logout-btn:hover {
+            background: #c82333;
+        }
+        
+        .user-info {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .menu {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 20px;
+        }
+
+        .menu-item {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .menu-item i {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .menu-item:hover {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header-controls">
+            <span class="user-info" id="user-info">Welcome, User</span>
+            <button class="logout-btn" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> Logout
+            </button>
+        </div>
+        
+        <header class="header">
+            <h1>Home Page</h1>
+        </header>
+        <div class="menu">
+            <div class="menu-item" onclick="window.location.href='sale.html'">
+                <i class="fas fa-shopping-cart"></i>
+                Sale
+            </div>
+            <div class="menu-item" onclick="window.location.href='debt-management.html'">
+                <i class="fas fa-money-check-alt"></i>
+                Debt Management
+            </div>
+            <div class="menu-item" onclick="window.location.href='customers.html'">
+                <i class="fas fa-users"></i>
+                Customer
+            </div>
+            <div class="menu-item" onclick="window.location.href='items.html'">
+                <i class="fas fa-cogs"></i>
+                Item
+            </div>
+            <div class="menu-item" onclick="window.location.href='dashboard.html'">
+                <i class="fas fa-file-invoice-dollar"></i>
+                Invoices Profits
+            </div>
+            <div class="menu-item" onclick="alert('Item Activity - Feature coming soon!')">
+                <i class="fas fa-cogs"></i>
+                Item Activity
+            </div>
+            <div class="menu-item" onclick="alert('Items Activity Total - Feature coming soon!')">
+                <i class="fas fa-list"></i>
+                Items Activity Total
+            </div>
+            <div class="menu-item" onclick="alert('Items Inventory - Feature coming soon!')">
+                <i class="fas fa-box"></i>
+                Items Inventory
+            </div>
+  
+         
+            <div class="menu-item" onclick="alert('Transfer - Feature coming soon!')">
+                <i class="fas fa-exchange-alt"></i>
+                Transfer
+            </div>
+            <div class="menu-item" onclick="backupNow()">
+                <i class="fas fa-cloud-upload-alt"></i>
+                Backup Now
+            </div>
+            <div class="menu-item" onclick="backupToFile()">
+                <i class="fas fa-file-export"></i>
+                Backup to File
+            </div>
+            <div class="menu-item" onclick="restoreFromBackup()">
+                <i class="fas fa-file-import"></i>
+                Restore from Backup
+            </div>
+            <div class="menu-item" onclick="alert('Change User - Feature coming soon!')">
+                <i class="fas fa-user-circle"></i>
+                Change User
+            </div>
+        </div>
+    </div>
+</body>
+</html>
