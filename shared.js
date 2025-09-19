@@ -598,3 +598,567 @@ window.addCustomerDebt = addCustomerDebt;
 window.addCustomerPayment = addCustomerPayment;
 window.getCustomerBalance = getCustomerBalance;
 window.getCustomerDebtTransactions = getCustomerDebtTransactions;
+
+// File Export Functions
+function exportToCSV(data, filename, headers = null) {
+    try {
+        let csvContent = '';
+        
+        // Add headers if provided
+        if (headers && headers.length > 0) {
+            csvContent += headers.join(',') + '\n';
+        } else if (data.length > 0) {
+            // Auto-generate headers from first object keys
+            const autoHeaders = Object.keys(data[0]);
+            csvContent += autoHeaders.join(',') + '\n';
+        }
+        
+        // Add data rows
+        data.forEach(row => {
+            const values = Object.values(row).map(value => {
+                // Handle values that contain commas or quotes
+                if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                    return `"${value.replace(/"/g, '""')}"`;
+                }
+                return value;
+            });
+            csvContent += values.join(',') + '\n';
+        });
+        
+        // Create and download file
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification(`CSV file "${filename}" exported successfully!`, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error exporting CSV:', error);
+        showNotification('Error exporting CSV file: ' + error.message, 'error');
+        return false;
+    }
+}
+
+function exportInvoicesToCSV() {
+    try {
+        // Get invoices from localStorage
+        const stored = localStorage.getItem('sonic_invoices');
+        if (!stored) {
+            showNotification('No invoices found to export', 'warning');
+            return;
+        }
+        
+        const invoices = JSON.parse(stored);
+        if (invoices.length === 0) {
+            showNotification('No invoices found to export', 'warning');
+            return;
+        }
+        
+        // Flatten invoice data for CSV
+        const csvData = [];
+        invoices.forEach(invoice => {
+            const baseData = {
+                'Invoice Number': invoice.invoiceNumber,
+                'Date': invoice.date,
+                'Customer': invoice.customerAccount || 'No Customer',
+                'Currency': invoice.currency,
+                'Payment Method': invoice.paymentMethod,
+                'Subtotal': invoice.subtotal,
+                'Discount': invoice.discount,
+                'Total': invoice.total,
+                'Total Quantity': invoice.totalQuantity
+            };
+            
+            if (invoice.items && invoice.items.length > 0) {
+                invoice.items.forEach((item, index) => {
+                    const itemData = {
+                        ...baseData,
+                        'Item Row': index + 1,
+                        'Barcode': item.barcode || '',
+                        'Item Name': item.itemName || '',
+                        'Quantity': item.quantity || 0,
+                        'Unit Price': item.retailPrice || 0,
+                        'Item Total': item.total || 0,
+                        'Note': item.note || ''
+                    };
+                    csvData.push(itemData);
+                });
+            } else {
+                csvData.push(baseData);
+            }
+        });
+        
+        const filename = `invoices_export_${new Date().toISOString().split('T')[0]}.csv`;
+        exportToCSV(csvData, filename);
+    } catch (error) {
+        console.error('Error exporting invoices:', error);
+        showNotification('Error exporting invoices: ' + error.message, 'error');
+    }
+}
+
+function exportCustomersToCSV() {
+    try {
+        const customers = getAllCustomers();
+        if (customers.length === 0) {
+            showNotification('No customers found to export', 'warning');
+            return;
+        }
+        
+        const csvData = customers.map(customer => ({
+            'ID': customer.id,
+            'Name': customer.name,
+            'Phone': customer.phone,
+            'Email': customer.email || '',
+            'Address': customer.address || '',
+            'Credit Limit': customer.creditLimit,
+            'Payment Terms': customer.paymentTerms || '',
+            'Discount Rate': customer.discountRate,
+            'Current Balance': customer.currentBalance || 0,
+            'Total Debt': customer.totalDebt || 0,
+            'Total Paid': customer.totalPaid || 0,
+            'Total Spent': customer.totalSpent || 0,
+            'Registration Date': customer.registrationDate
+        }));
+        
+        const filename = `customers_export_${new Date().toISOString().split('T')[0]}.csv`;
+        exportToCSV(csvData, filename);
+    } catch (error) {
+        console.error('Error exporting customers:', error);
+        showNotification('Error exporting customers: ' + error.message, 'error');
+    }
+}
+
+function exportItemsToCSV() {
+    try {
+        const items = getAllItems();
+        if (items.length === 0) {
+            showNotification('No items found to export', 'warning');
+            return;
+        }
+        
+        const csvData = items.map(item => ({
+            'ID': item.id,
+            'Barcode': item.barcode,
+            'Name': item.name,
+            'Description': item.description || '',
+            'Category': item.category || '',
+            'Supplier': item.supplier || '',
+            'Purchase Price': item.purchasePrice,
+            'Retail Price': item.retailPrice,
+            'Stock Quantity': item.stockQuantity,
+            'Min Stock Level': item.minStockLevel,
+            'Date Added': item.dateAdded,
+            'Last Updated': item.lastUpdated
+        }));
+        
+        const filename = `items_export_${new Date().toISOString().split('T')[0]}.csv`;
+        exportToCSV(csvData, filename);
+    } catch (error) {
+        console.error('Error exporting items:', error);
+        showNotification('Error exporting items: ' + error.message, 'error');
+    }
+}
+
+function exportAllDataToCSV() {
+    try {
+        const allData = {
+            invoices: [],
+            customers: getAllCustomers(),
+            items: getAllItems(),
+            transactions: getAllTransactions()
+        };
+        
+        // Get invoices from localStorage
+        const stored = localStorage.getItem('sonic_invoices');
+        if (stored) {
+            allData.invoices = JSON.parse(stored);
+        }
+        
+        // Create comprehensive CSV
+        const csvData = [];
+        
+        // Add summary row
+        csvData.push({
+            'Data Type': 'SUMMARY',
+            'Count': '',
+            'Details': `Invoices: ${allData.invoices.length}, Customers: ${allData.customers.length}, Items: ${allData.items.length}, Transactions: ${allData.transactions.length}`
+        });
+        
+        // Add invoices
+        allData.invoices.forEach(invoice => {
+            csvData.push({
+                'Data Type': 'INVOICE',
+                'ID/Number': invoice.invoiceNumber,
+                'Date': invoice.date,
+                'Customer': invoice.customerAccount || 'No Customer',
+                'Total': invoice.total,
+                'Currency': invoice.currency,
+                'Payment Method': invoice.paymentMethod
+            });
+        });
+        
+        // Add customers
+        allData.customers.forEach(customer => {
+            csvData.push({
+                'Data Type': 'CUSTOMER',
+                'ID/Number': customer.id,
+                'Name': customer.name,
+                'Phone': customer.phone,
+                'Email': customer.email || '',
+                'Current Balance': customer.currentBalance || 0,
+                'Credit Limit': customer.creditLimit
+            });
+        });
+        
+        // Add items
+        allData.items.forEach(item => {
+            csvData.push({
+                'Data Type': 'ITEM',
+                'ID/Number': item.id,
+                'Name': item.name,
+                'Barcode': item.barcode,
+                'Category': item.category || '',
+                'Retail Price': item.retailPrice,
+                'Stock Quantity': item.stockQuantity
+            });
+        });
+        
+        const filename = `complete_data_export_${new Date().toISOString().split('T')[0]}.csv`;
+        exportToCSV(csvData, filename);
+    } catch (error) {
+        console.error('Error exporting all data:', error);
+        showNotification('Error exporting all data: ' + error.message, 'error');
+    }
+}
+
+// Excel Export Functions (using HTML table approach)
+function exportToExcel(data, filename, sheetName = 'Sheet1') {
+    try {
+        // Create HTML table
+        let htmlContent = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" 
+              xmlns:x="urn:schemas-microsoft-com:office:excel" 
+              xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+            <meta charset="utf-8">
+            <meta name="ExcelCreated" content="true">
+            <!--[if gte mso 9]>
+            <xml>
+                <x:ExcelWorkbook>
+                    <x:ExcelWorksheets>
+                        <x:ExcelWorksheet>
+                            <x:Name>${sheetName}</x:Name>
+                            <x:WorksheetOptions>
+                                <x:DefaultRowHeight>285</x:DefaultRowHeight>
+                            </x:WorksheetOptions>
+                        </x:ExcelWorksheet>
+                    </x:ExcelWorksheets>
+                </x:ExcelWorkbook>
+            </xml>
+            <![endif]-->
+        </head>
+        <body>
+            <table border="1">
+        `;
+        
+        // Add headers
+        if (data.length > 0) {
+            const headers = Object.keys(data[0]);
+            htmlContent += '<tr>';
+            headers.forEach(header => {
+                htmlContent += `<th style="background-color: #4f46e5; color: white; font-weight: bold; padding: 8px;">${header}</th>`;
+            });
+            htmlContent += '</tr>';
+            
+            // Add data rows
+            data.forEach(row => {
+                htmlContent += '<tr>';
+                Object.values(row).forEach(value => {
+                    htmlContent += `<td style="padding: 5px;">${value}</td>`;
+                });
+                htmlContent += '</tr>';
+            });
+        }
+        
+        htmlContent += `
+            </table>
+        </body>
+        </html>
+        `;
+        
+        // Create and download file
+        const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification(`Excel file "${filename}" exported successfully!`, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error exporting Excel:', error);
+        showNotification('Error exporting Excel file: ' + error.message, 'error');
+        return false;
+    }
+}
+
+function exportInvoicesToExcel() {
+    try {
+        // Get invoices from localStorage
+        const stored = localStorage.getItem('sonic_invoices');
+        if (!stored) {
+            showNotification('No invoices found to export', 'warning');
+            return;
+        }
+        
+        const invoices = JSON.parse(stored);
+        if (invoices.length === 0) {
+            showNotification('No invoices found to export', 'warning');
+            return;
+        }
+        
+        // Flatten invoice data for Excel
+        const excelData = [];
+        invoices.forEach(invoice => {
+            const baseData = {
+                'Invoice Number': invoice.invoiceNumber,
+                'Date': invoice.date,
+                'Customer': invoice.customerAccount || 'No Customer',
+                'Currency': invoice.currency,
+                'Payment Method': invoice.paymentMethod,
+                'Subtotal': invoice.subtotal,
+                'Discount': invoice.discount,
+                'Total': invoice.total,
+                'Total Quantity': invoice.totalQuantity
+            };
+            
+            if (invoice.items && invoice.items.length > 0) {
+                invoice.items.forEach((item, index) => {
+                    const itemData = {
+                        ...baseData,
+                        'Item Row': index + 1,
+                        'Barcode': item.barcode || '',
+                        'Item Name': item.itemName || '',
+                        'Quantity': item.quantity || 0,
+                        'Unit Price': item.retailPrice || 0,
+                        'Item Total': item.total || 0,
+                        'Note': item.note || ''
+                    };
+                    excelData.push(itemData);
+                });
+            } else {
+                excelData.push(baseData);
+            }
+        });
+        
+        const filename = `invoices_export_${new Date().toISOString().split('T')[0]}.xls`;
+        exportToExcel(excelData, filename, 'Invoices');
+    } catch (error) {
+        console.error('Error exporting invoices to Excel:', error);
+        showNotification('Error exporting invoices to Excel: ' + error.message, 'error');
+    }
+}
+
+function exportCustomersToExcel() {
+    try {
+        const customers = getAllCustomers();
+        if (customers.length === 0) {
+            showNotification('No customers found to export', 'warning');
+            return;
+        }
+        
+        const excelData = customers.map(customer => ({
+            'ID': customer.id,
+            'Name': customer.name,
+            'Phone': customer.phone,
+            'Email': customer.email || '',
+            'Address': customer.address || '',
+            'Credit Limit': customer.creditLimit,
+            'Payment Terms': customer.paymentTerms || '',
+            'Discount Rate': customer.discountRate,
+            'Current Balance': customer.currentBalance || 0,
+            'Total Debt': customer.totalDebt || 0,
+            'Total Paid': customer.totalPaid || 0,
+            'Total Spent': customer.totalSpent || 0,
+            'Registration Date': customer.registrationDate
+        }));
+        
+        const filename = `customers_export_${new Date().toISOString().split('T')[0]}.xls`;
+        exportToExcel(excelData, filename, 'Customers');
+    } catch (error) {
+        console.error('Error exporting customers to Excel:', error);
+        showNotification('Error exporting customers to Excel: ' + error.message, 'error');
+    }
+}
+
+function exportItemsToExcel() {
+    try {
+        const items = getAllItems();
+        if (items.length === 0) {
+            showNotification('No items found to export', 'warning');
+            return;
+        }
+        
+        const excelData = items.map(item => ({
+            'ID': item.id,
+            'Barcode': item.barcode,
+            'Name': item.name,
+            'Description': item.description || '',
+            'Category': item.category || '',
+            'Supplier': item.supplier || '',
+            'Purchase Price': item.purchasePrice,
+            'Retail Price': item.retailPrice,
+            'Stock Quantity': item.stockQuantity,
+            'Min Stock Level': item.minStockLevel,
+            'Date Added': item.dateAdded,
+            'Last Updated': item.lastUpdated
+        }));
+        
+        const filename = `items_export_${new Date().toISOString().split('T')[0]}.xls`;
+        exportToExcel(excelData, filename, 'Items');
+    } catch (error) {
+        console.error('Error exporting items to Excel:', error);
+        showNotification('Error exporting items to Excel: ' + error.message, 'error');
+    }
+}
+
+// Plain Text Export Functions
+function exportToText(data, filename, headers = null) {
+    try {
+        let textContent = '';
+        
+        // Add headers if provided
+        if (headers && headers.length > 0) {
+            textContent += headers.join('\t') + '\n';
+        } else if (data.length > 0) {
+            // Auto-generate headers from first object keys
+            const autoHeaders = Object.keys(data[0]);
+            textContent += autoHeaders.join('\t') + '\n';
+        }
+        
+        // Add data rows
+        data.forEach(row => {
+            const values = Object.values(row).map(value => {
+                return String(value).replace(/\n/g, ' ').replace(/\t/g, ' ');
+            });
+            textContent += values.join('\t') + '\n';
+        });
+        
+        // Create and download file
+        const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        link.setAttribute('href', url);
+        link.setAttribute('download', filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        showNotification(`Text file "${filename}" exported successfully!`, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error exporting text:', error);
+        showNotification('Error exporting text file: ' + error.message, 'error');
+        return false;
+    }
+}
+
+// Export functions to window
+window.exportToCSV = exportToCSV;
+window.exportInvoicesToCSV = exportInvoicesToCSV;
+window.exportCustomersToCSV = exportCustomersToCSV;
+window.exportItemsToCSV = exportItemsToCSV;
+window.exportAllDataToCSV = exportAllDataToCSV;
+
+window.exportToExcel = exportToExcel;
+window.exportInvoicesToExcel = exportInvoicesToExcel;
+window.exportCustomersToExcel = exportCustomersToExcel;
+window.exportItemsToExcel = exportItemsToExcel;
+
+window.exportToText = exportToText;
+
+// Combined Excel export for all data
+function exportAllDataToExcel() {
+    try {
+        const allData = {
+            invoices: [],
+            customers: getAllCustomers(),
+            items: getAllItems(),
+            transactions: getAllTransactions()
+        };
+        
+        // Get invoices from localStorage
+        const stored = localStorage.getItem('sonic_invoices');
+        if (stored) {
+            allData.invoices = JSON.parse(stored);
+        }
+        
+        // Create comprehensive Excel data
+        const excelData = [];
+        
+        // Add summary row
+        excelData.push({
+            'Data Type': 'SUMMARY',
+            'Count': '',
+            'Details': `Invoices: ${allData.invoices.length}, Customers: ${allData.customers.length}, Items: ${allData.items.length}, Transactions: ${allData.transactions.length}`
+        });
+        
+        // Add invoices
+        allData.invoices.forEach(invoice => {
+            excelData.push({
+                'Data Type': 'INVOICE',
+                'ID/Number': invoice.invoiceNumber,
+                'Date': invoice.date,
+                'Customer': invoice.customerAccount || 'No Customer',
+                'Total': invoice.total,
+                'Currency': invoice.currency,
+                'Payment Method': invoice.paymentMethod
+            });
+        });
+        
+        // Add customers
+        allData.customers.forEach(customer => {
+            excelData.push({
+                'Data Type': 'CUSTOMER',
+                'ID/Number': customer.id,
+                'Name': customer.name,
+                'Phone': customer.phone,
+                'Email': customer.email || '',
+                'Current Balance': customer.currentBalance || 0,
+                'Credit Limit': customer.creditLimit
+            });
+        });
+        
+        // Add items
+        allData.items.forEach(item => {
+            excelData.push({
+                'Data Type': 'ITEM',
+                'ID/Number': item.id,
+                'Name': item.name,
+                'Barcode': item.barcode,
+                'Category': item.category || '',
+                'Retail Price': item.retailPrice,
+                'Stock Quantity': item.stockQuantity
+            });
+        });
+        
+        const filename = `complete_data_export_${new Date().toISOString().split('T')[0]}.xls`;
+        exportToExcel(excelData, filename, 'Complete Data');
+    } catch (error) {
+        console.error('Error exporting all data to Excel:', error);
+        showNotification('Error exporting all data to Excel: ' + error.message, 'error');
+    }
+}
+
+window.exportAllDataToExcel = exportAllDataToExcel;

@@ -95,48 +95,45 @@
             }
         }
         
-        // Backup to File function
+        // Backup to File function - shows format selection
         function backupToFile() {
-            try {
-                // Collect all data from localStorage
-                const backupData = {
-                    timestamp: new Date().toISOString(),
-                    version: '1.0',
-                    data: {
-                        shopData: localStorage.getItem('shopData'),
-                        sonic_invoices: localStorage.getItem('sonic_invoices'),
-                        sonic_invoice_counter: localStorage.getItem('sonic_invoice_counter'),
-                        sonic_security_state: localStorage.getItem('sonic_security_state')
-                    }
-                };
-                
-                // Convert to JSON string
-                const jsonString = JSON.stringify(backupData, null, 2);
-                
-                // Create filename with timestamp
-                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-                const filename = `sonic_pos_backup_${timestamp}.json`;
-                
-                // Create and download file
-                const blob = new Blob([jsonString], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                
-                // Show success message
-                alert(`✅ Backup successful!\n\nFile saved: ${filename}\n\nThis backup contains:\n• Shop data (items, customers, transactions)\n• All invoices\n• Invoice counter\n• Security state\n\nYou can restore this data later if needed.`);
-                
-                console.log('Backup completed successfully:', filename);
-                
-            } catch (error) {
-                console.error('Backup failed:', error);
-                alert('❌ Backup failed!\n\nError: ' + error.message + '\n\nPlease try again or contact support.');
+            // Show format selection dialog
+            const format = confirm('Choose backup format:\n\nOK = CSV Format\nCancel = Excel Format');
+            
+            if (format) {
+                // CSV Format
+                exportAllDataToCSV();
+            } else {
+                // Excel Format
+                exportAllDataToExcel();
+            }
+        }
+        
+        // Direct clear data function
+        function clearAllDataDirect() {
+            if (confirm('⚠️ WARNING: This will clear ALL system data including:\n\n• All saved invoices\n• All customer data\n• All item data\n• All transaction history\n• All debt records\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?')) {
+                try {
+                    // Clear all localStorage data
+                    localStorage.removeItem('sonic_invoices');
+                    localStorage.removeItem('sonic_invoice_counter');
+                    localStorage.removeItem('sonic_shop_data');
+                    localStorage.removeItem('sonic_security_state');
+                    
+                    // Clear session storage
+                    sessionStorage.removeItem('sonic_logged_in');
+                    sessionStorage.removeItem('sonic_username');
+                    sessionStorage.removeItem('sonic_login_time');
+                    
+                    // Show success message
+                    alert('✅ All system data cleared successfully!\n\nYou will be redirected to the login page.');
+                    
+                    // Redirect to login page
+                    window.location.href = 'login.html';
+                    
+                } catch (error) {
+                    console.error('Error clearing data:', error);
+                    alert('❌ Error clearing data: ' + error.message);
+                }
             }
         }
         
@@ -385,11 +382,15 @@
                 <i class="fas fa-file-import"></i>
                 Restore from Backup
             </div>
-            <div class="menu-item" onclick="alert('Change User - Feature coming soon!')">
-                <i class="fas fa-user-circle"></i>
-                Change User
+            <div class="menu-item" onclick="clearAllDataDirect()" style="background-color: #dc2626;">
+                <i class="fas fa-trash-alt"></i>
+                Clear All Data
             </div>
+        
         </div>
     </div>
+    
+    <!-- Include shared.js for export functions -->
+    <script src="shared.js"></script>
 </body>
 </html>
