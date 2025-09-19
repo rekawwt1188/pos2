@@ -8,6 +8,7 @@ let rowIds = [1];
 let invoiceCounter = 1;
 let savedInvoices = [];
 let currentInvoiceIndex = -1;
+let isNavigating = false; // Prevent multiple navigation clicks
 
 // Initialize the system
 document.addEventListener('DOMContentLoaded', function() {
@@ -56,7 +57,8 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(() => hideCustomerSuggestions(), 200);
     });
     document.getElementById('payment-method').addEventListener('change', updateCustomerInfoDisplay);
-    document.getElementById('currency').addEventListener('change', updateCustomerInfoDisplay);
+    document.getElementById('currency').addEventListener('change', handleCurrencyChange);
+    document.getElementById('paid-amount').addEventListener('input', calculateRemainingBalance);
     
     
     updateNavigationButtons();
@@ -79,9 +81,13 @@ function initializeInvoice() {
     });
     document.getElementById('invoice-date').textContent = dateString;
     
-    // Generate invoice number
+    // Generate invoice number (don't increment on page load, only when creating new)
     const invoiceNumber = 'INV-' + String(invoiceCounter).padStart(4, '0');
     document.getElementById('invoice-number').textContent = invoiceNumber;
+    
+    // Initialize currency tracking and symbols
+    document.getElementById('currency').setAttribute('data-previous', 'USD');
+    updateCurrencySymbols();
 }
 
 function addEventListenersToRow(rowNumber) {
@@ -193,6 +199,8 @@ function updateInvoiceSum() {
     
     const discountType = document.getElementById('discount-type').value;
     const discountInput = parseFloat(document.getElementById('discount').value) || 0;
+    const paymentMethod = document.getElementById('payment-method').value;
+    const paidAmount = paymentMethod === 'partial' ? parseFloat(document.getElementById('paid-amount').value) || 0 : 0;
     
     let discount = 0;
     if (discountType === 'percentage') {
@@ -201,7 +209,11 @@ function updateInvoiceSum() {
         discount = discountInput;
     }
     
-    const finalTotal = subtotal - discount;
+    // Calculate final total: Subtotal - Discount - Amount Paid (for partial payments)
+    let finalTotal = subtotal - discount;
+    if (paymentMethod === 'partial') {
+        finalTotal = finalTotal - paidAmount;
+    }
     
     console.log('Calculated totals:', { subtotal, totalQuantity, discount, finalTotal });
     
@@ -249,6 +261,7 @@ function updateCustomerInfoDisplay() {
     const paymentMethodText = {
         'on-account': 'On Account',
         'cash': 'Cash',
+        'partial': 'Partial Payment',
         'card': 'Card',
         'check': 'Check',
         'bank-transfer': 'Bank Transfer'
@@ -285,6 +298,132 @@ function updateCustomerInfoDisplay() {
         if (paidElement) {
             paidElement.textContent = typeof formatCurrency === 'function' ? formatCurrency(paid) : `$${paid.toFixed(2)}`;
         }
+    }
+}
+
+function togglePartialPayment() {
+    const paymentMethod = document.getElementById('payment-method').value;
+    const partialPaymentGroup = document.getElementById('partial-payment-group');
+    
+    if (paymentMethod === 'partial') {
+        partialPaymentGroup.style.display = 'block';
+        calculateRemainingBalance();
+    } else {
+        partialPaymentGroup.style.display = 'none';
+        document.getElementById('paid-amount').value = '';
+    }
+    
+    updateCustomerInfoDisplay();
+}
+
+function calculateRemainingBalance() {
+    const paymentMethod = document.getElementById('payment-method').value;
+    
+    if (paymentMethod !== 'partial') {
+        return;
+    }
+    
+    // Update the totals first to get the correct final total
+    updateInvoiceSum();
+    
+    const totalSumText = document.getElementById('total-sum').textContent;
+    const finalTotal = parseFloat(totalSumText.replace(/[^0-9.-]/g, '')) || 0;
+    const paidAmount = parseFloat(document.getElementById('paid-amount').value) || 0;
+    
+    // The remaining amount is now the final total (which already has paid amount subtracted)
+    const remaining = finalTotal;
+    
+    // Update the display to show partial payment info
+    const customerAccount = document.getElementById('customer-account').value;
+    if (customerAccount) {
+        const currency = document.getElementById('currency').value;
+        const currencySymbol = currency === 'IQD' ? 'د.ع' : '$';
+        
+        let paymentText = `Partial: ${currencySymbol}${paidAmount.toFixed(2)} paid`;
+        if (remaining > 0) {
+            paymentText += `, ${currencySymbol}${remaining.toFixed(2)} on account`;
+        } else {
+            paymentText += ` (Fully Paid)`;
+        }
+        
+        document.getElementById('display-payment-method').textContent = paymentText;
+    }
+}
+
+function handleCurrencyChange() {
+    const currency = document.getElementById('currency').value;
+    const previousCurrency = document.getElementById('currency').getAttribute('data-previous') || 'USD';
+    
+    // Store current currency for next change
+    document.getElementById('currency').setAttribute('data-previous', currency);
+    
+    // Only convert if we have items with prices
+    if (rowIds.length > 0) {
+        if (currency === 'IQD' && previousCurrency === 'USD') {
+            // Convert USD to IQD (multiply by 1400)
+            convertPrices(1400);
+        } else if (currency === 'USD' && previousCurrency === 'IQD') {
+            // Convert IQD to USD (divide by 1400)
+            convertPrices(1/1400);
+        }
+    }
+    
+    // Update currency symbols
+    updateCurrencySymbols();
+    
+    // Update totals and display
+    updateInvoiceSum();
+    updateCustomerInfoDisplay();
+}
+
+function convertPrices(conversionRate) {
+    rowIds.forEach(rowId => {
+        const priceElement = document.getElementById(`retail-price-${rowId}`);
+        const totalElement = document.getElementById(`total-${rowId}`);
+        
+        if (priceElement && priceElement.value) {
+            const currentPrice = parseFloat(priceElement.value) || 0;
+            const newPrice = currentPrice * conversionRate;
+            priceElement.value = newPrice.toFixed(2);
+            
+            // Update the total for this row
+            const quantity = parseFloat(document.getElementById(`quantity-${rowId}`).value) || 0;
+            const newTotal = newPrice * quantity;
+            if (totalElement) {
+                totalElement.value = newTotal.toFixed(2);
+            }
+        }
+    });
+    
+    // Convert discount if it exists
+    const discountElement = document.getElementById('discount');
+    if (discountElement && discountElement.value) {
+        const currentDiscount = parseFloat(discountElement.value) || 0;
+        const newDiscount = currentDiscount * conversionRate;
+        discountElement.value = newDiscount.toFixed(2);
+    }
+    
+    // Convert paid amount if it exists
+    const paidAmountElement = document.getElementById('paid-amount');
+    if (paidAmountElement && paidAmountElement.value) {
+        const currentPaidAmount = parseFloat(paidAmountElement.value) || 0;
+        const newPaidAmount = currentPaidAmount * conversionRate;
+        paidAmountElement.value = newPaidAmount.toFixed(2);
+    }
+}
+
+function updateCurrencySymbols() {
+    const currency = document.getElementById('currency').value;
+    const currencySymbol = currency === 'IQD' ? 'د.ع' : '$';
+    
+    // Update currency symbols in the totals section
+    document.getElementById('currency-symbol').textContent = currencySymbol;
+    document.getElementById('final-currency-symbol').textContent = currencySymbol;
+    
+    // Update placeholder text for paid amount
+    const paidAmountElement = document.getElementById('paid-amount');
+    if (paidAmountElement) {
+        paidAmountElement.placeholder = `0.00 ${currencySymbol}`;
     }
 }
 
@@ -361,6 +500,33 @@ function renumberRows() {
     rowCount = rowIds.length;
 }
 
+function createInvoiceRow(rowId) {
+    const tbody = document.getElementById('invoice-tbody');
+    const newRow = document.createElement('tr');
+    newRow.id = `row-${rowId}`;
+    newRow.setAttribute('onclick', `selectRow(${rowId})`);
+    
+    newRow.innerHTML = `
+        <td class="row-number">${rowId}</td>
+        <td><input type="text" id="barcode-${rowId}" placeholder="Scan barcode" onclick="event.stopPropagation()"></td>
+        <td>
+            <div style="display: flex; gap: 4px; align-items: center;">
+                <input type="text" id="item-name-${rowId}" placeholder="Enter item name" onclick="event.stopPropagation()" autocomplete="off" style="flex: 1;">
+                <button type="button" onclick="openItemQuickSearch(${rowId})" class="quick-search-btn" title="Quick Search">
+                    🔍
+                </button>
+            </div>
+        </td>
+        <td><input type="number" id="quantity-${rowId}" value="" min="0" step="1" onclick="event.stopPropagation()"></td>
+        <td><input type="number" id="retail-price-${rowId}" value="" min="0" step="0.01" onclick="event.stopPropagation()"></td>
+        <td><input type="number" id="total-${rowId}" value="" disabled onclick="event.stopPropagation()"></td>
+        <td><input type="text" id="note-${rowId}" placeholder="Add note" onclick="event.stopPropagation()"></td>
+    `;
+    
+    tbody.appendChild(newRow);
+    addEventListenersToRow(rowId);
+}
+
 function addRow() {
     if (rowIds.length >= maxRows) {
         showNotification(`Maximum ${maxRows} rows allowed.`, "warning");
@@ -371,31 +537,7 @@ function addRow() {
     rowIds.push(newRowId);
     rowCount = rowIds.length;
     
-    const tbody = document.getElementById('invoice-tbody');
-    const newRow = document.createElement('tr');
-    newRow.id = `row-${newRowId}`;
-    newRow.setAttribute('onclick', `selectRow(${newRowId})`);
-    newRow.style.animation = 'slideIn 0.3s ease-out';
-    
-    newRow.innerHTML = `
-        <td class="row-number">${newRowId}</td>
-        <td><input type="text" id="barcode-${newRowId}" placeholder="Scan barcode" onclick="event.stopPropagation()"></td>
-        <td>
-            <div style="display: flex; gap: 4px; align-items: center;">
-                <input type="text" id="item-name-${newRowId}" placeholder="Enter item name" onclick="event.stopPropagation()" autocomplete="off" style="flex: 1;">
-                <button type="button" onclick="openItemQuickSearch(${newRowId})" class="quick-search-btn" title="Quick Search">
-                    🔍
-                </button>
-            </div>
-        </td>
-        <td><input type="number" id="quantity-${newRowId}" value="" min="0" step="1" onclick="event.stopPropagation()"></td>
-        <td><input type="number" id="retail-price-${newRowId}" value="" min="0" step="0.01" onclick="event.stopPropagation()"></td>
-        <td><input type="number" id="total-${newRowId}" value="" disabled onclick="event.stopPropagation()"></td>
-        <td><input type="text" id="note-${newRowId}" placeholder="Add note" onclick="event.stopPropagation()"></td>
-    `;
-    
-    tbody.appendChild(newRow);
-    addEventListenersToRow(newRowId);
+    createInvoiceRow(newRowId);
     updateInvoiceSum();
     
     setTimeout(() => {
@@ -472,6 +614,10 @@ function newInvoice() {
         // Clear current invoice data
         clearCurrentInvoice();
         
+        // Increment invoice counter for new invoice
+        invoiceCounter++;
+        saveInvoiceCounterToStorage();
+        
         // Generate new invoice number
         const newInvoiceNumber = 'INV-' + String(invoiceCounter).padStart(4, '0');
         document.getElementById('invoice-number').textContent = newInvoiceNumber;
@@ -507,9 +653,15 @@ function clearCurrentInvoice() {
     // Reset form fields
     document.getElementById('customer-account').value = '';
     document.getElementById('currency').value = 'USD';
+    document.getElementById('currency').setAttribute('data-previous', 'USD');
     document.getElementById('payment-method').value = 'on-account';
     document.getElementById('discount-type').value = 'amount';
     document.getElementById('discount').value = '0.00';
+    document.getElementById('paid-amount').value = '';
+    document.getElementById('partial-payment-group').style.display = 'none';
+    
+    // Update currency symbols
+    updateCurrencySymbols();
     
     // Reset selection
     selectedRowId = null;
@@ -535,6 +687,11 @@ function clearCurrentInvoice() {
 }
 
 function previousInvoice() {
+    if (isNavigating) {
+        console.log('Navigation already in progress, ignoring click');
+        return;
+    }
+    
     console.log(`Previous invoice clicked. Current index: ${currentInvoiceIndex}, Total invoices: ${savedInvoices.length}`);
     
     if (savedInvoices.length === 0) {
@@ -542,24 +699,28 @@ function previousInvoice() {
         return;
     }
     
+    isNavigating = true;
+    
     if (currentInvoiceIndex > 0) {
         currentInvoiceIndex--;
         loadInvoice(currentInvoiceIndex, 'previous');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     } else if (currentInvoiceIndex === 0) {
         // Go to the last invoice (wrap around)
         currentInvoiceIndex = savedInvoices.length - 1;
         loadInvoice(currentInvoiceIndex, 'previous');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     } else {
         // currentInvoiceIndex is -1 (new invoice), go to last saved invoice
         currentInvoiceIndex = savedInvoices.length - 1;
         loadInvoice(currentInvoiceIndex, 'previous');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     }
 }
 
 function nextInvoice() {
+    if (isNavigating) {
+        console.log('Navigation already in progress, ignoring click');
+        return;
+    }
+    
     console.log(`Next invoice clicked. Current index: ${currentInvoiceIndex}, Total invoices: ${savedInvoices.length}`);
     
     if (savedInvoices.length === 0) {
@@ -567,20 +728,19 @@ function nextInvoice() {
         return;
     }
     
+    isNavigating = true;
+    
     if (currentInvoiceIndex < savedInvoices.length - 1) {
         currentInvoiceIndex++;
         loadInvoice(currentInvoiceIndex, 'next');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     } else if (currentInvoiceIndex === savedInvoices.length - 1) {
         // Go to the first invoice (wrap around)
         currentInvoiceIndex = 0;
         loadInvoice(currentInvoiceIndex, 'next');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     } else {
         // currentInvoiceIndex is -1 (new invoice), go to first saved invoice
         currentInvoiceIndex = 0;
         loadInvoice(currentInvoiceIndex, 'next');
-        showNotification(`Loading invoice ${currentInvoiceIndex + 1} of ${savedInvoices.length}`, "info");
     }
 }
 
@@ -634,36 +794,34 @@ function loadInvoice(index, direction = 'next') {
             if (discountTypeEl) discountTypeEl.value = invoice.discountType || 'amount';
             if (discountEl) discountEl.value = invoice.discountInput || 0;
         
-            // Clear current rows
-            while (rowIds.length > 0) {
-                if (rowIds.length === 1) {
-                    clearFirstRow();
-                } else {
-                    removeLastRow();
-                }
+            // Clear current rows synchronously
+            const tbody = document.getElementById('invoice-tbody');
+            if (tbody) {
+                tbody.innerHTML = '';
             }
+            rowIds = [];
+            rowCount = 0;
             
             // Add rows for invoice items with error handling
-            if (invoice.items && Array.isArray(invoice.items)) {
+            if (invoice.items && Array.isArray(invoice.items) && invoice.items.length > 0) {
                 invoice.items.forEach((item, idx) => {
                     if (idx === 0) {
-                        // Use first row
+                        // Create first row
+                        createInvoiceRow(1);
                         rowIds = [1];
                         loadRowData(1, item);
                     } else {
-                        // Add new rows
-                        addRow();
-                        loadRowData(rowIds[rowIds.length - 1], item);
+                        // Create additional rows
+                        const newRowId = idx + 1;
+                        createInvoiceRow(newRowId);
+                        rowIds.push(newRowId);
+                        loadRowData(newRowId, item);
                     }
                 });
             } else {
-                console.warn('Invoice items is not an array or is missing');
-            }
-            
-            // If no items, ensure we have at least one empty row
-            if (!invoice.items || invoice.items.length === 0) {
+                // If no items, ensure we have at least one empty row
+                createInvoiceRow(1);
                 rowIds = [1];
-                clearFirstRow();
             }
             
             updateCurrencySymbol();
@@ -677,6 +835,11 @@ function loadInvoice(index, direction = 'next') {
             } else {
                 container.style.animation = 'slideInRight 0.3s ease-out';
             }
+            
+            // Reset navigation lock after animation completes
+            setTimeout(() => {
+                isNavigating = false;
+            }, 300);
         } catch (error) {
             console.error('Error loading invoice:', error);
             showNotification('Error loading invoice: ' + error.message, 'error');
@@ -684,6 +847,7 @@ function loadInvoice(index, direction = 'next') {
             // Reset to safe state
             currentInvoiceIndex = -1;
             updateNavigationButtons();
+            isNavigating = false;
         }
     }, 300);
 }
@@ -807,6 +971,56 @@ function jumpToInvoice(invoiceNumber) {
     }
 }
 
+// Function to search for invoice by number
+function searchInvoice() {
+    const searchInput = document.getElementById('invoice-search-input');
+    if (!searchInput) {
+        console.error('Invoice search input not found');
+        return;
+    }
+    
+    const searchValue = searchInput.value.trim();
+    if (!searchValue) {
+        showNotification("Please enter an invoice number to search.", "warning");
+        return;
+    }
+    
+    // Normalize the search value
+    let searchNumber = searchValue;
+    if (!searchNumber.startsWith('INV-')) {
+        // If user enters just the number, add INV- prefix
+        const number = parseInt(searchNumber);
+        if (!isNaN(number)) {
+            searchNumber = `INV-${String(number).padStart(4, '0')}`;
+        } else {
+            searchNumber = `INV-${searchNumber}`;
+        }
+    }
+    
+    // Find the invoice
+    const index = savedInvoices.findIndex(invoice => 
+        invoice.invoiceNumber === searchNumber ||
+        invoice.invoiceNumber === searchValue
+    );
+    
+    if (index !== -1) {
+        currentInvoiceIndex = index;
+        loadInvoice(currentInvoiceIndex, 'next');
+        showNotification(`Found invoice ${searchNumber}`, "success");
+        searchInput.value = ''; // Clear the search input
+    } else {
+        showNotification(`Invoice ${searchNumber} not found.`, "error");
+    }
+}
+
+// Function to handle Enter key press in search input
+function handleInvoiceSearch(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        searchInvoice();
+    }
+}
+
 // Function to show invoice list for quick navigation
 function showInvoiceList() {
     console.log('Invoice list requested. Current state:', {
@@ -845,9 +1059,15 @@ function cancelInvoice() {
         // Reset form fields
         document.getElementById('customer-account').value = '';
         document.getElementById('currency').value = 'USD';
+        document.getElementById('currency').setAttribute('data-previous', 'USD');
         document.getElementById('payment-method').value = 'on-account';
         document.getElementById('discount-type').value = 'amount';
         document.getElementById('discount').value = '0.00';
+        document.getElementById('paid-amount').value = '';
+        document.getElementById('partial-payment-group').style.display = 'none';
+        
+        // Update currency symbols
+        updateCurrencySymbols();
         
         // Reset selection
         selectedRowId = null;
@@ -1002,6 +1222,12 @@ function clearAllSystemData() {
             localStorage.removeItem('sonic_invoices');
             localStorage.removeItem('sonic_invoice_counter');
             localStorage.removeItem('sonic_shop_data');
+            localStorage.removeItem('sonic_security_state');
+            
+            // Clear session storage
+            sessionStorage.removeItem('sonic_logged_in');
+            sessionStorage.removeItem('sonic_username');
+            sessionStorage.removeItem('sonic_login_time');
             
             // Reset all variables
             savedInvoices = [];
@@ -1018,8 +1244,61 @@ function clearAllSystemData() {
                 window.location.reload();
             }, 2000);
             
-    } catch (error) {
+        } catch (error) {
             console.error('Error clearing system data:', error);
+            showNotification('Error clearing data: ' + error.message, 'error');
+        }
+    }
+}
+
+// Function to force reload all data from localStorage
+function forceReloadData() {
+    try {
+        // Reload invoices
+        loadInvoicesFromStorage();
+        loadInvoiceCounterFromStorage();
+        
+        // Reload shared data if available
+        if (typeof loadData === 'function') {
+            loadData();
+        }
+        
+        // Update UI
+        updateNavigationButtons();
+        updateInvoiceSum();
+        
+        showNotification('Data reloaded successfully!', 'success');
+    } catch (error) {
+        console.error('Error reloading data:', error);
+        showNotification('Error reloading data: ' + error.message, 'error');
+    }
+}
+
+// Global clear data function - can be called from anywhere
+function clearAllDataGlobal() {
+    if (confirm('⚠️ WARNING: This will clear ALL system data including:\n\n• All saved invoices\n• All customer data\n• All item data\n• All transaction history\n• All debt records\n\nThis action CANNOT be undone!\n\nAre you sure you want to continue?')) {
+        try {
+            // Clear all localStorage data
+            localStorage.removeItem('sonic_invoices');
+            localStorage.removeItem('sonic_invoice_counter');
+            localStorage.removeItem('sonic_shop_data');
+            localStorage.removeItem('sonic_security_state');
+            
+            // Clear session storage
+            sessionStorage.removeItem('sonic_logged_in');
+            sessionStorage.removeItem('sonic_username');
+            sessionStorage.removeItem('sonic_login_time');
+            
+            // Show success message
+            showNotification('All system data cleared! Redirecting to login...', 'success');
+            
+            // Redirect to login page after 2 seconds
+            setTimeout(() => {
+                window.location.href = 'login.html';
+            }, 2000);
+            
+        } catch (error) {
+            console.error('Error clearing data:', error);
             showNotification('Error clearing data: ' + error.message, 'error');
         }
     }
@@ -1099,13 +1378,21 @@ async function saveInvoiceWithCustomerIntegration() {
         customer
     });
     
+    // Handle partial payment
+    const paymentMethod = document.getElementById('payment-method').value;
+    const paidAmount = paymentMethod === 'partial' ? parseFloat(document.getElementById('paid-amount').value) || 0 : 0;
+    // For partial payments, the remaining amount is the final total (which already has paid amount subtracted)
+    const remainingAmount = paymentMethod === 'partial' ? (parseFloat(totalSumText) || 0) : 0;
+
     const invoiceData = {
         invoiceNumber: document.getElementById('invoice-number').textContent,
         date: document.getElementById('invoice-date').textContent,
         customerAccount: customerName,
         customerId: customer ? customer.id : null,
         currency: document.getElementById('currency').value,
-        paymentMethod: document.getElementById('payment-method').value,
+        paymentMethod: paymentMethod,
+        paidAmount: paidAmount,
+        remainingAmount: remainingAmount,
         items: [],
         totalQuantity: parseInt(totalQuantityText) || 0,
         discountType: document.getElementById('discount-type').value,
@@ -1161,12 +1448,42 @@ async function saveInvoiceWithCustomerIntegration() {
         console.log('Payment method:', document.getElementById('payment-method').value);
         console.log('addCustomerDebt function available:', typeof addCustomerDebt);
         
-        if (customer && document.getElementById('payment-method').value !== 'cash') {
-            // Non-cash payment - add to customer debt
+        if (customer && paymentMethod === 'partial') {
+            // Partial payment - add remaining amount to customer debt
+            if (typeof addCustomerDebt === 'function' && remainingAmount > 0) {
+                console.log('Adding partial payment debt for customer:', customer.id, 'Amount:', remainingAmount);
+                try {
+                    const debtResult = addCustomerDebt(customer.id, remainingAmount, `Invoice ${invoiceData.invoiceNumber} - Partial Payment (${paidAmount} paid, ${remainingAmount} remaining)`);
+                    console.log('Debt result:', debtResult);
+                    if (debtResult) {
+                        const paidAmountFormatted = typeof formatCurrency === 'function' ? formatCurrency(paidAmount) : `$${paidAmount.toFixed(2)}`;
+                        const remainingAmountFormatted = typeof formatCurrency === 'function' ? formatCurrency(remainingAmount) : `$${remainingAmount.toFixed(2)}`;
+                        const saveLocation = 'Local Storage';
+                        showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation}! ${paidAmountFormatted} paid, ${remainingAmountFormatted} added to ${customer.name}'s account.`, 'success');
+                    } else {
+                        console.error('Failed to add debt - addCustomerDebt returned false');
+                        const saveLocation = 'Local Storage';
+                        showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation}! (Debt tracking failed)`, 'warning');
+                    }
+                } catch (debtError) {
+                    console.error('Error calling addCustomerDebt:', debtError);
+                    showNotification(`Invoice ${invoiceData.invoiceNumber} saved! (Debt tracking error: ${debtError.message})`, 'warning');
+                }
+            } else if (remainingAmount <= 0) {
+                // Full payment made
+                const saveLocation = 'Local Storage';
+                showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation} and fully paid!`, 'success');
+            } else {
+                console.warn('addCustomerDebt function not available, saving without debt tracking');
+                const saveLocation = 'Local Storage';
+                showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation}!`, 'success');
+            }
+        } else if (customer && paymentMethod !== 'cash' && paymentMethod !== 'partial') {
+            // Non-cash payment - add full amount to customer debt
             if (typeof addCustomerDebt === 'function') {
                 console.log('Adding debt for customer:', customer.id, 'Amount:', invoiceData.total);
                 try {
-                    const debtResult = addCustomerDebt(customer.id, invoiceData.total, `Invoice ${invoiceData.invoiceNumber} - ${document.getElementById('payment-method').value}`);
+                    const debtResult = addCustomerDebt(customer.id, invoiceData.total, `Invoice ${invoiceData.invoiceNumber} - ${paymentMethod}`);
                     console.log('Debt result:', debtResult);
                     if (debtResult) {
                         const debtAmount = typeof formatCurrency === 'function' ? formatCurrency(invoiceData.total) : `$${invoiceData.total.toFixed(2)}`;
@@ -1186,7 +1503,7 @@ async function saveInvoiceWithCustomerIntegration() {
                 const saveLocation = 'Local Storage';
                 showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation}!`, 'success');
             }
-        } else if (customer && document.getElementById('payment-method').value === 'cash') {
+        } else if (customer && paymentMethod === 'cash') {
             // Cash payment - no debt added
             const saveLocation = 'Local Storage';
             showNotification(`Invoice ${invoiceData.invoiceNumber} saved to ${saveLocation} and paid in cash!`, 'success');
@@ -1202,12 +1519,6 @@ async function saveInvoiceWithCustomerIntegration() {
     }
 
     console.log('Invoice Data:', invoiceData);
-    
-    
-    // Generate new invoice number for next invoice
-    invoiceCounter++;
-    const newInvoiceNumber = 'INV-' + String(invoiceCounter).padStart(4, '0');
-    document.getElementById('invoice-number').textContent = newInvoiceNumber;
     
     // Update navigation buttons after saving
     updateNavigationButtons();

@@ -133,15 +133,21 @@
                     localStorage.removeItem('sonic_invoices');
                     localStorage.removeItem('sonic_invoice_counter');
                     localStorage.removeItem('sonic_shop_data');
+                    localStorage.removeItem('sonic_security_state');
+                    
+                    // Clear session storage as well
+                    sessionStorage.removeItem('sonic_logged_in');
+                    sessionStorage.removeItem('sonic_username');
+                    sessionStorage.removeItem('sonic_login_time');
                     
                     // Show success message
                     document.getElementById('status').innerHTML = 
-                        '<div class="status success">✅ All system data cleared successfully!<br>The system will now start fresh with default data.</div>';
+                        '<div class="status success">✅ All system data cleared successfully!<br>Redirecting to login page...</div>';
                     
-                    // Redirect to main page after 3 seconds
+                    // Redirect to login page after 2 seconds
                     setTimeout(() => {
-                        window.location.href = 'index.html';
-                    }, 3000);
+                        window.location.href = 'login.html';
+                    }, 2000);
                     
                 } catch (error) {
                     document.getElementById('status').innerHTML = 

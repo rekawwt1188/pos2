@@ -762,13 +762,24 @@ body {
 
 /* Print Styles */
 @media print {
+    @page {
+        margin: 0.5in;
+        size: A4;
+    }
+    
     .print-only {
         display: block !important;
     }
     
     .form-section,
     .actions-section,
-    .footer-section {
+    .footer-section,
+    .invoice-navigation,
+    .invoice-search,
+    .user-controls,
+    .invoice-date,
+    .table-title,
+    .table-header {
         display: none !important;
     }
     
@@ -861,6 +872,21 @@ body {
         border: 1px solid #000 !important;
         padding: 5px !important;
         font-size: 10px !important;
+    }
+    
+    .invoice-table input::placeholder {
+        color: transparent !important;
+    }
+    
+    .invoice-table input {
+        border: none !important;
+        background: transparent !important;
+        font-size: 10px !important;
+        padding: 2px !important;
+    }
+    
+    .quick-search-btn {
+        display: none !important;
     }
     
     .invoice-table thead {
